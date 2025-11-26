@@ -1,0 +1,13 @@
+{
+  "files": {
+    "main.css": "/world_life_expectancy/static/css/main.68675d64.css",
+    "main.js": "/world_life_expectancy/static/js/main.4cdd2611.js",
+    "index.html": "/world_life_expectancy/index.html",
+    "main.68675d64.css.map": "/world_life_expectancy/static/css/main.68675d64.css.map",
+    "main.4cdd2611.js.map": "/world_life_expectancy/static/js/main.4cdd2611.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.68675d64.css",
+    "static/js/main.4cdd2611.js"
+  ]
+}
