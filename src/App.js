@@ -14,10 +14,11 @@ import "./App.css";
 import * as topojson from "topojson-client";
 import Papa from "papaparse";
 
-const GEO_URL = "/countries-110m.json";
-const LIFE_CSV_URL = "/global_life_expectancy.csv";
-const META_COUNTRY_CSV_URL = "/Metadata_Country_API_SP.DYN.LE00.IN_DS2_en_csv_v2_130058.csv";
-const META_INDICATOR_CSV_URL = "/Metadata_Indicator_API_SP.DYN.LE00.IN_DS2_en_csv_v2_130058.csv";
+const PUBLIC_URL = process.env.PUBLIC_URL || "";
+const GEO_URL = `${PUBLIC_URL}/countries-110m.json`;
+const LIFE_CSV_URL = `${PUBLIC_URL}/global_life_expectancy.csv`;
+const META_COUNTRY_CSV_URL = `${PUBLIC_URL}/Metadata_Country_API_SP.DYN.LE00.IN_DS2_en_csv_v2_130058.csv`;
+const META_INDICATOR_CSV_URL = `${PUBLIC_URL}/Metadata_Indicator_API_SP.DYN.LE00.IN_DS2_en_csv_v2_130058.csv`;
 
 const START_YEAR = 1960;
 const END_YEAR = 2023;
@@ -235,6 +236,25 @@ export default function App() {
     // cao hơn trung bình → xanh lá đậm, mỗi phía gradient theo giá trị.
     return scaleDiverging(interpolateRdYlGn).domain([min, mean, max]);
   }, [lifeByYearForMap, selectedYear]);
+
+  const legendGradient = useMemo(() => {
+    const { min, max } = colorStats;
+    if (min === undefined || max === undefined || !Number.isFinite(min) || !Number.isFinite(max)) {
+      return "linear-gradient(to right, #dcdcdc, #dcdcdc)";
+    }
+    if (min === max) {
+      const c = colorScale(min);
+      return `linear-gradient(to right, ${c}, ${c})`;
+    }
+
+    const steps = 9;
+    const stops = Array.from({ length: steps }, (_, i) => {
+      const t = i / (steps - 1);
+      const v = min + t * (max - min);
+      return colorScale(v);
+    });
+    return `linear-gradient(to right, ${stops.join(", ")})`;
+  }, [colorScale, colorStats]);
 
   const selectedFeature = useMemo(() => {
     if (!selectedCountry || allCountries.length === 0) return null;
@@ -656,8 +676,7 @@ export default function App() {
                   <div
                     className="absolute inset-0"
                     style={{
-                      backgroundImage:
-                        "linear-gradient(to right, #a50026, #fdae61, #ffffbf, #a6d96a, #006837)",
+                      backgroundImage: legendGradient,
                     }}
                   />
                   <div
