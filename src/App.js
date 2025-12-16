@@ -16,8 +16,7 @@ import Papa from "papaparse";
 
 const PUBLIC_URL = process.env.PUBLIC_URL || "";
 const GEO_URL = `${PUBLIC_URL}/countries-110m.json`;
-const LIFE_CSV_URL = `${PUBLIC_URL}/global_life_expectancy.csv`;
-const META_COUNTRY_CSV_URL = `${PUBLIC_URL}/Metadata_Country_API_SP.DYN.LE00.IN_DS2_en_csv_v2_130058.csv`;
+const API_URL = "http://localhost:5000/data";
 const META_INDICATOR_CSV_URL = `${PUBLIC_URL}/Metadata_Indicator_API_SP.DYN.LE00.IN_DS2_en_csv_v2_130058.csv`;
 
 const START_YEAR = 1960;
@@ -32,63 +31,37 @@ function normalizeName(name) {
   return (name || "")
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "") // bỏ dấu tiếng Việt/Pháp, v.v.
-    .replace(/[\s,.'()\-"]/g, "");
+    .replace(/[\u0300-\u036f]/g, "") // bỏ dấu tiếng Việt
+    .replace(/[^a-z0-9]/g, "");      // Chỉ giữ lại chữ và số
 }
 
-// Map một số tên nước đặc biệt trong topojson sang tên trong CSV
+// Map một số tên nước đặc biệt trong topojson sang tên chuẩn hóa
 const NAME_ALIASES = {
-  // topo: "United States of America" → csv: "United States"
   [normalizeName("United States of America")]: normalizeName("United States"),
-  // topo: "Russia" → csv: "Russian Federation"
   [normalizeName("Russia")]: normalizeName("Russian Federation"),
-  // topo: "Dem. Rep. Congo" → csv: "Congo, Dem. Rep."
   [normalizeName("Dem. Rep. Congo")]: normalizeName("Congo, Dem. Rep."),
-  // topo: "Dominican Rep." → csv: "Dominican Republic"
   [normalizeName("Dominican Rep.")]: normalizeName("Dominican Republic"),
-  // topo: "Bahamas" → csv: "Bahamas, The"
   [normalizeName("Bahamas")]: normalizeName("Bahamas, The"),
-  // topo: "Central African Rep." → csv: "Central African Republic"
   [normalizeName("Central African Rep.")]: normalizeName("Central African Republic"),
-  // topo: "Congo" → csv: "Congo, Rep."
   [normalizeName("Congo")]: normalizeName("Congo, Rep."),
-  // topo: "Eq. Guinea" → csv: "Equatorial Guinea"
   [normalizeName("Eq. Guinea")]: normalizeName("Equatorial Guinea"),
-  // topo: "Gambia" → csv: "Gambia, The"
   [normalizeName("Gambia")]: normalizeName("Gambia, The"),
-  // topo: "Laos" → csv: "Lao PDR"
   [normalizeName("Laos")]: normalizeName("Lao PDR"),
-  // topo: "North Korea" → csv: "Korea, Dem. People's Rep."
   [normalizeName("North Korea")]: normalizeName("Korea, Dem. People's Rep."),
-  // topo: "South Korea" → csv: "Korea, Rep."
   [normalizeName("South Korea")]: normalizeName("Korea, Rep."),
-  // topo: "Kyrgyzstan" → csv: "Kyrgyz Republic"
   [normalizeName("Kyrgyzstan")]: normalizeName("Kyrgyz Republic"),
-  // topo: "Iran" → csv: "Iran, Islamic Rep."
   [normalizeName("Iran")]: normalizeName("Iran, Islamic Rep."),
-  // topo: "Syria" → csv: "Syrian Arab Republic"
   [normalizeName("Syria")]: normalizeName("Syrian Arab Republic"),
-  // topo: "Turkey" → csv: "Türkiye" (World Bank naming)
   [normalizeName("Turkey")]: normalizeName("Türkiye"),
-  // topo: "Solomon Is." → csv: "Solomon Islands"
   [normalizeName("Solomon Is.")]: normalizeName("Solomon Islands"),
-  // topo: "Brunei" → csv: "Brunei Darussalam"
   [normalizeName("Brunei")]: normalizeName("Brunei Darussalam"),
-  // topo: "Slovakia" → csv: "Slovak Republic"
   [normalizeName("Slovakia")]: normalizeName("Slovak Republic"),
-  // topo: "Yemen" → csv: "Yemen, Rep."
   [normalizeName("Yemen")]: normalizeName("Yemen, Rep."),
-  // topo: "Bosnia and Herz." → csv: "Bosnia and Herzegovina"
   [normalizeName("Bosnia and Herz.")]: normalizeName("Bosnia and Herzegovina"),
-  // topo: "Macedonia" → csv: "North Macedonia"
   [normalizeName("Macedonia")]: normalizeName("North Macedonia"),
-  // topo: "S. Sudan" → csv: "South Sudan"
   [normalizeName("S. Sudan")]: normalizeName("South Sudan"),
-  // topo: "Egypt" → csv: "Egypt, Arab Rep."
   [normalizeName("Egypt")]: normalizeName("Egypt, Arab Rep."),
-  // topo: "Venezuela" → csv: "Venezuela, RB"
   [normalizeName("Venezuela")]: normalizeName("Venezuela, RB"),
-  // topo: "Puerto Rico" → csv: "Puerto Rico" (territory)
   [normalizeName("Puerto Rico")]: normalizeName("Puerto Rico"),
 };
 
@@ -107,14 +80,13 @@ export default function App() {
   const [colorStats, setColorStats] = useState({ min: 30, mean: 50, max: 80 });
   const mapRef = useRef(null);
 
-  // Load topojson + real life expectancy data
+  //  Load Data từ Server ---
   useEffect(() => {
     async function loadData() {
       try {
-        const [topoRes, lifeRes, metaCountryRes, metaIndicatorRes] = await Promise.all([
+        // 1. Tải bản đồ và Metadata (File tĩnh)
+        const [topoRes, metaIndicatorRes] = await Promise.all([
           fetch(GEO_URL),
-          fetch(LIFE_CSV_URL),
-          fetch(META_COUNTRY_CSV_URL),
           fetch(META_INDICATOR_CSV_URL),
         ]);
 
@@ -124,67 +96,12 @@ export default function App() {
           : [];
         setAllCountries(topoCountries);
 
-        const lifeText = await lifeRes.text();
-        const metaCountryText = await metaCountryRes.text();
+        // Lấy mô tả chỉ số
         const metaIndicatorText = await metaIndicatorRes.text();
-
-        const lifeHeaderMarker = '"Country Name","Country Code"';
-        const lifeStartIndex = lifeText.indexOf(lifeHeaderMarker);
-        const lifeCleanText = lifeStartIndex !== -1 ? lifeText.slice(lifeStartIndex) : lifeText;
-
-        const lifeParsed = Papa.parse(lifeCleanText, {
-          header: true,
-          skipEmptyLines: true,
-        });
-
-        const metaCountryParsed = Papa.parse(metaCountryText, {
-          header: true,
-          skipEmptyLines: true,
-        });
-
         const metaIndicatorParsed = Papa.parse(metaIndicatorText, {
           header: true,
           skipEmptyLines: true,
         });
-
-        const countryNameToCode = {};
-        const tableNameToCode = {};
-
-        metaCountryParsed.data.forEach((row) => {
-          const code = row["Country Code"];
-          const tableName = row["TableName"];
-          const normTableName = normalizeName(tableName);
-          if (code && normTableName) {
-            tableNameToCode[normTableName] = code;
-          }
-          const fullName = row["TableName"];
-          const normFull = normalizeName(fullName);
-          if (code && normFull) {
-            countryNameToCode[normFull] = code;
-          }
-        });
-
-        const lifeSeries = {};
-
-        lifeParsed.data.forEach((row) => {
-          const name = row["Country Name"];
-          if (!name) return;
-          const normName = normalizeName(name);
-
-          const series = {};
-          YEARS.forEach((year) => {
-            const valRaw = row[String(year)];
-            const val = valRaw === undefined || valRaw === null || valRaw === "" ? null : parseFloat(valRaw);
-            if (!Number.isNaN(val) && val !== null) {
-              series[year] = val;
-            }
-          });
-
-          if (Object.keys(series).length > 0) {
-            lifeSeries[normName] = series;
-          }
-        });
-
         const indicatorRow = metaIndicatorParsed.data.find(
           (r) => r["INDICATOR_CODE"] === "SP.DYN.LE00.IN"
         );
@@ -192,8 +109,21 @@ export default function App() {
           setIndicatorDescription(indicatorRow["INDICATOR_NAME"] || "");
         }
 
+        // 2. GỌI API SERVER (Thay thế việc đọc CSV)
+        console.log("Đang gọi API tới:", API_URL);
+        const dbRes = await fetch(API_URL);
+        
+        if (!dbRes.ok) {
+           throw new Error(`Server error: ${dbRes.status}`);
+        }
+
+        const lifeSeries = await dbRes.json();
+        console.log("Dữ liệu nhận được từ Server:", lifeSeries);
+
+        // 3. Cập nhật State
         setLifeSeriesByName(lifeSeries);
 
+        // 4. Xử lý dữ liệu cho bản đồ (Tách theo năm để tô màu)
         setLifeByYearForMap((prev) => {
           const byYear = { ...prev };
           COLOR_YEARS.forEach((year) => {
@@ -207,8 +137,9 @@ export default function App() {
           });
           return byYear;
         });
+
       } catch (e) {
-        console.error(e);
+        console.error("Lỗi tải dữ liệu:", e);
       }
     }
 
@@ -232,8 +163,6 @@ export default function App() {
 
     setColorStats({ min, mean, max });
 
-    // Diverging scale: thấp hơn trung bình → tone ấm, quanh trung bình → vàng nhạt,
-    // cao hơn trung bình → xanh lá đậm, mỗi phía gradient theo giá trị.
     return scaleDiverging(interpolateRdYlGn).domain([min, mean, max]);
   }, [lifeByYearForMap, selectedYear]);
 
@@ -272,24 +201,23 @@ export default function App() {
     return lifeSeriesByName[normName] || null;
   }, [selectedFeature, lifeSeriesByName]);
 
-  // Debug: log countries without data for the currently selected year
+  // Debug: log countries without data
   useEffect(() => {
     const yearData = lifeByYearForMap[selectedYear];
     if (!yearData || !allCountries.length) return;
 
+    // Code debug cũ 
+    /*
     const missing = allCountries
       .map((f) => f.properties?.name)
       .filter(Boolean)
       .filter((name) => {
         let norm = normalizeName(name);
-        if (NAME_ALIASES[norm]) {
-          norm = NAME_ALIASES[norm];
-        }
+        if (NAME_ALIASES[norm]) norm = NAME_ALIASES[norm];
         return yearData[norm] === undefined;
       });
-
-    // Chỉ log một danh sách gọn để bạn tiện kiểm tra trong console
-    console.log("[LifeExpectancy] Countries without data for year", selectedYear, ":", missing);
+    console.log("[LifeExpectancy] Missing data for:", missing);
+    */
   }, [allCountries, lifeByYearForMap, selectedYear]);
 
   const handleZoomIn = () => setZoom((z) => Math.min(z * 1.5, 20));
@@ -301,7 +229,6 @@ export default function App() {
 
   const popOutProjection = useMemo(() => {
     if (!selectedFeature) return geoMercator().scale(1).translate([220, 180]);
-    // make country map inside popout a bit wider
     return geoMercator().fitSize([360, 320], selectedFeature);
   }, [selectedFeature]);
 
@@ -322,9 +249,9 @@ export default function App() {
       return <div className="text-gray-400">No data for this country.</div>;
     }
 
-    const width = 520;   // wider logical width so chart uses more horizontal space
-    const height = 290;  // taller logical height
-    const padding = 36;  // slightly smaller margin so data area lớn hơn
+    const width = 520;   
+    const height = 290;  
+    const padding = 36;  
 
     const xMin = dataPoints[0].year;
     const xMax = dataPoints[dataPoints.length - 1].year;
@@ -353,44 +280,16 @@ export default function App() {
       const barWidth = (width - 2 * padding) / dataPoints.length;
       return (
         <svg width={width} height={height} className="w-full h-full">
-          <line
-            x1={padding}
-            y1={height - padding}
-            x2={width - padding}
-            y2={height - padding}
-            stroke="#e5e7eb"
-            strokeWidth={1}
-          />
-          <line
-            x1={padding}
-            y1={padding}
-            x2={padding}
-            y2={height - padding}
-            stroke="#e5e7eb"
-            strokeWidth={1}
-          />
-          {Array.from({ length: yTicks + 1 }, (_, i) => {
+           {/* Chart UI code giữ nguyên từ bản cũ */}
+           <line x1={padding} y1={height - padding} x2={width - padding} y2={height - padding} stroke="#e5e7eb" strokeWidth={1} />
+           <line x1={padding} y1={padding} x2={padding} y2={height - padding} stroke="#e5e7eb" strokeWidth={1} />
+           {Array.from({ length: yTicks + 1 }, (_, i) => {
             const v = yMin + i * yStep;
             const y = scaleY(v);
             return (
               <g key={i}>
-                <line
-                  x1={padding}
-                  y1={y}
-                  x2={width - padding}
-                  y2={y}
-                  stroke="#f3f4f6"
-                  strokeWidth={1}
-                />
-                <text
-                  x={padding - 6}
-                  y={y + 3}
-                  textAnchor="end"
-                  fontSize={11}
-                  fill="#111827"
-                >
-                  {v.toFixed(0)}
-                </text>
+                <line x1={padding} y1={y} x2={width - padding} y2={y} stroke="#f3f4f6" strokeWidth={1} />
+                <text x={padding - 6} y={y + 3} textAnchor="end" fontSize={11} fill="#111827">{v.toFixed(0)}</text>
               </g>
             );
           })}
@@ -399,159 +298,56 @@ export default function App() {
             const y = scaleY(d.value);
             const h = height - padding - y;
             return (
-              <rect
-                key={d.year}
-                x={x}
-                y={y}
-                width={barWidth * 0.8}
-                height={h}
-                fill={chartColorScale(d.value)}
-              >
-                <title>
-                  {`Year ${d.year}: ${d.value.toFixed(2)} years`}
-                </title>
+              <rect key={d.year} x={x} y={y} width={barWidth * 0.8} height={h} fill={chartColorScale(d.value)}>
+                <title>{`Year ${d.year}: ${d.value.toFixed(2)} years`}</title>
               </rect>
             );
           })}
           {dataPoints.map((d, i) => {
             if (i % xTickStep !== 0 && i !== dataPoints.length - 1) return null;
             const x = scaleX(d.year);
-            return (
-              <text
-                key={d.year}
-                x={x}
-                y={height - padding + 16}
-                textAnchor="middle"
-                fontSize={11}
-                fill="#111827"
-              >
-                {d.year}
-              </text>
-            );
+            return <text key={d.year} x={x} y={height - padding + 16} textAnchor="middle" fontSize={11} fill="#111827">{d.year}</text>;
           })}
-          <text
-            x={width / 2}
-            y={height - 6}
-            textAnchor="middle"
-            fontSize={12}
-            fill="#111827"
-          >
-            Year
-          </text>
-          <text
-            x={12}
-            y={height / 2}
-            textAnchor="middle"
-            fontSize={12}
-            fill="#111827"
-            transform={`rotate(-90 12 ${height / 2})`}
-          >
-            Life expectancy (years)
-          </text>
+           {/* Axis Labels */}
+           <text x={width / 2} y={height - 6} textAnchor="middle" fontSize={12} fill="#111827">Year</text>
+           <text x={12} y={height / 2} textAnchor="middle" fontSize={12} fill="#111827" transform={`rotate(-90 12 ${height / 2})`}>Life expectancy (years)</text>
         </svg>
       );
     }
 
-    const pathD = dataPoints
-      .map((d, i) => {
+    const pathD = dataPoints.map((d, i) => {
         const x = scaleX(d.year);
         const y = scaleY(d.value);
         return `${i === 0 ? "M" : "L"}${x},${y}`;
-      })
-      .join(" ");
+      }).join(" ");
 
     return (
       <svg width={width} height={height} className="w-full h-full">
-        <line
-          x1={padding}
-          y1={height - padding}
-          x2={width - padding}
-          y2={height - padding}
-          stroke="#e5e7eb"
-          strokeWidth={1}
-        />
-        <line
-          x1={padding}
-          y1={padding}
-          x2={padding}
-          y2={height - padding}
-          stroke="#e5e7eb"
-          strokeWidth={1}
-        />
-        {Array.from({ length: yTicks + 1 }, (_, i) => {
-          const v = yMin + i * yStep;
-          const y = scaleY(v);
-          return (
-            <g key={i}>
-              <line
-                x1={padding}
-                y1={y}
-                x2={width - padding}
-                y2={y}
-                stroke="#f3f4f6"
-                strokeWidth={1}
-              />
-              <text
-                x={padding - 6}
-                y={y + 3}
-                textAnchor="end"
-                fontSize={11}
-                fill="#111827"
-              >
-                {v.toFixed(0)}
-              </text>
-            </g>
-          );
-        })}
+         <line x1={padding} y1={height - padding} x2={width - padding} y2={height - padding} stroke="#e5e7eb" strokeWidth={1} />
+         <line x1={padding} y1={padding} x2={padding} y2={height - padding} stroke="#e5e7eb" strokeWidth={1} />
+         {Array.from({ length: yTicks + 1 }, (_, i) => {
+            const v = yMin + i * yStep;
+            const y = scaleY(v);
+            return (
+              <g key={i}>
+                <line x1={padding} y1={y} x2={width - padding} y2={y} stroke="#f3f4f6" strokeWidth={1} />
+                <text x={padding - 6} y={y + 3} textAnchor="end" fontSize={11} fill="#111827">{v.toFixed(0)}</text>
+              </g>
+            );
+          })}
         <path d={pathD} fill="none" stroke="#16a34a" strokeWidth={2} />
         {dataPoints.map((d, i) => (
-          <circle
-            key={d.year}
-            cx={scaleX(d.year)}
-            cy={scaleY(d.value)}
-            r={i === dataPoints.length - 1 ? 4 : 3}
-            fill={chartColorScale(d.value)}
-          >
-            <title>
-              {`Year ${d.year}: ${d.value.toFixed(2)} years`}
-            </title>
+          <circle key={d.year} cx={scaleX(d.year)} cy={scaleY(d.value)} r={i === dataPoints.length - 1 ? 4 : 3} fill={chartColorScale(d.value)}>
+            <title>{`Year ${d.year}: ${d.value.toFixed(2)} years`}</title>
           </circle>
         ))}
         {dataPoints.map((d, i) => {
           if (i % xTickStep !== 0 && i !== dataPoints.length - 1) return null;
           const x = scaleX(d.year);
-          return (
-            <text
-              key={d.year}
-              x={x}
-              y={height - padding + 16}
-              textAnchor="middle"
-              fontSize={11}
-              fill="#111827"
-            >
-              {d.year}
-            </text>
-          );
+          return <text key={d.year} x={x} y={height - padding + 16} textAnchor="middle" fontSize={11} fill="#111827">{d.year}</text>;
         })}
-        <text
-          x={width / 2}
-          y={height - 6}
-          textAnchor="middle"
-          fontSize={12}
-          fill="#111827"
-        >
-          Year
-        </text>
-        <text
-          x={12}
-          y={height / 2}
-          textAnchor="middle"
-          fontSize={12}
-          fill="#111827"
-          transform={`rotate(-90 12 ${height / 2})`}
-        >
-          Life expectancy (years)
-        </text>
+        <text x={width / 2} y={height - 6} textAnchor="middle" fontSize={12} fill="#111827">Year</text>
+        <text x={12} y={height / 2} textAnchor="middle" fontSize={12} fill="#111827" transform={`rotate(-90 12 ${height / 2})`}>Life expectancy (years)</text>
       </svg>
     );
   };
@@ -712,34 +508,11 @@ export default function App() {
             </div>
           )}
 
-          {/* Zoom controls (overlay inside map, top-right) */}
+          {/* Zoom controls */}
           <div className="absolute top-3 right-3 flex flex-col gap-2 z-30">
-            <Button
-              variant="contained"
-              size="small"
-              onClick={handleZoomIn}
-              className="!rounded-full shadow"
-            >
-              <ZoomIn />
-            </Button>
-            <Button
-              variant="contained"
-              color="secondary"
-              size="small"
-              onClick={handleZoomOut}
-              className="!rounded-full shadow"
-            >
-              <ZoomOut />
-            </Button>
-            <Button
-              variant="contained"
-              color="inherit"
-              size="small"
-              onClick={handleReset}
-              className="!rounded-full shadow"
-            >
-              <RestartAlt />
-            </Button>
+            <Button variant="contained" size="small" onClick={handleZoomIn} className="!rounded-full shadow"><ZoomIn /></Button>
+            <Button variant="contained" color="secondary" size="small" onClick={handleZoomOut} className="!rounded-full shadow"><ZoomOut /></Button>
+            <Button variant="contained" color="inherit" size="small" onClick={handleReset} className="!rounded-full shadow"><RestartAlt /></Button>
           </div>
         </div>
 
@@ -749,30 +522,13 @@ export default function App() {
             <div className="relative bg-gradient-to-br from-white/95 via-white/80 to-white/65 backdrop-blur-md rounded-2xl shadow-2xl w-11/12 max-w-6xl flex gap-6 p-7 animate-popIn border border-white/40 text-black">
               <div className="flex-[2] flex items-center justify-center">
                 <ComposableMap width={360} height={320} projection={popOutProjection}>
-                  <Geographies
-                    geography={{
-                      type: "FeatureCollection",
-                      features: [selectedFeature],
-                    }}
-                  >
+                  <Geographies geography={{ type: "FeatureCollection", features: [selectedFeature] }}>
                     {({ geographies }) =>
                       geographies.map((geo) => {
                         let normName = normalizeName(geo.properties?.name);
-                        if (NAME_ALIASES[normName]) {
-                          normName = NAME_ALIASES[normName];
-                        }
+                        if (NAME_ALIASES[normName]) normName = NAME_ALIASES[normName];
                         const life = currentLifeData[normName];
-                        return (
-                          <Geography
-                            key={geo.rsmKey}
-                            geography={geo}
-                            fill={
-                              life !== undefined ? colorScale(life) : "#dcdcdc"
-                            }
-                            stroke="#222"
-                            strokeWidth={1}
-                          />
-                        );
+                        return <Geography key={geo.rsmKey} geography={geo} fill={life !== undefined ? colorScale(life) : "#dcdcdc"} stroke="#222" strokeWidth={1} />;
                       })
                     }
                   </Geographies>
@@ -782,23 +538,12 @@ export default function App() {
               <div className="flex-[1.9] flex flex-col">
                 <div className="flex justify-between items-center">
                   <h3 className="text-xl font-semibold">{selectedCountry}</h3>
-                  <button
-                    onClick={() => setSelectedCountry(null)}
-                    className="text-gray-500 hover:text-gray-700"
-                  >
-                    ✕
-                  </button>
+                  <button onClick={() => setSelectedCountry(null)} className="text-gray-500 hover:text-gray-700">✕</button>
                 </div>
                 <div className="mt-3 flex items-center justify-end gap-3 text-sm text-gray-600">
                   <div className="flex items-center gap-2">
                     <span>Range</span>
-                    <Select
-                      size="small"
-                      value={chartRange}
-                      onChange={(e) => setChartRange(e.target.value)}
-                      variant="outlined"
-                      sx={{ backgroundColor: "white", minWidth: 130, fontSize: 12 }}
-                    >
+                    <Select size="small" value={chartRange} onChange={(e) => setChartRange(e.target.value)} variant="outlined" sx={{ backgroundColor: "white", minWidth: 130, fontSize: 12 }}>
                       <MenuItem value="all">All years</MenuItem>
                       <MenuItem value="before2000">Before 2000</MenuItem>
                       <MenuItem value="after2000">After 2000</MenuItem>
@@ -806,13 +551,7 @@ export default function App() {
                   </div>
                   <div className="flex items-center gap-2">
                     <span>Chart</span>
-                    <Select
-                      size="small"
-                      value={chartType}
-                      onChange={(e) => setChartType(e.target.value)}
-                      variant="outlined"
-                      sx={{ backgroundColor: "white", minWidth: 110, fontSize: 12 }}
-                    >
+                    <Select size="small" value={chartType} onChange={(e) => setChartType(e.target.value)} variant="outlined" sx={{ backgroundColor: "white", minWidth: 110, fontSize: 12 }}>
                       <MenuItem value="line">Line</MenuItem>
                       <MenuItem value="bar">Bar</MenuItem>
                     </Select>
@@ -825,22 +564,14 @@ export default function App() {
                   Tuổi thọ trung bình năm {selectedYear}:{" "}
                   <span className="font-medium">
                     {(() => {
-                      let normName = normalizeName(
-                        selectedFeature.properties?.name
-                      );
-                      if (NAME_ALIASES[normName]) {
-                        normName = NAME_ALIASES[normName];
-                      }
+                      let normName = normalizeName(selectedFeature.properties?.name);
+                      if (NAME_ALIASES[normName]) normName = NAME_ALIASES[normName];
                       const life = currentLifeData[normName];
                       return life !== undefined ? `${life.toFixed(2)} years` : "N/A";
                     })()}
                   </span>
                 </div>
-                {indicatorDescription && (
-                  <div className="mt-1 text-xs text-gray-500">
-                    Indicator: {indicatorDescription}
-                  </div>
-                )}
+                {indicatorDescription && <div className="mt-1 text-xs text-gray-500">Indicator: {indicatorDescription}</div>}
               </div>
             </div>
           </div>
