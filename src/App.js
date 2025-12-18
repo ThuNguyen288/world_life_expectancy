@@ -14,6 +14,7 @@ import "./App.css";
 import * as topojson from "topojson-client";
 import Papa from "papaparse";
 import AdminPanel from "./AdminPanel";
+import ComparePanel from "./ComparePanel";
 
 const PUBLIC_URL = process.env.PUBLIC_URL || "";
 const GEO_URL = `${PUBLIC_URL}/countries-110m.json`;
@@ -107,6 +108,7 @@ export default function App() {
   const [chartRange, setChartRange] = useState("after2000"); // all, before2000, after2000
   const [colorStats, setColorStats] = useState({ min: 30, mean: 50, max: 80 });
   const [adminPanelOpen, setAdminPanelOpen] = useState(false);
+  const [compareOpen, setCompareOpen] = useState(false);
   const mapRef = useRef(null);
 
   // Load topojson + real life expectancy data
@@ -603,6 +605,14 @@ export default function App() {
           >
             Admin
           </Button>
+          <Button
+            variant="outlined"
+            size="small"
+            onClick={() => setCompareOpen(true)}
+            sx={{ color: "#666", borderColor: "#ddd" }}
+          >
+            Compare
+          </Button>
           <div className="text-sm text-gray-600 mr-1">Year</div>
           <Select
             size="small"
@@ -886,6 +896,12 @@ export default function App() {
         onClose={() => setAdminPanelOpen(false)}
         lifeSeriesByName={lifeSeriesByName}
         onDataUpdate={handleDataUpdate}
+        YEARS={YEARS}
+      />
+      <ComparePanel
+        open={compareOpen}
+        onClose={() => setCompareOpen(false)}
+        lifeSeriesByName={lifeSeriesByName}
         YEARS={YEARS}
       />
     </div>
