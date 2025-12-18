@@ -748,6 +748,7 @@ export default function App() {
 // Small reusable animated country chart used for single-country popout
 function CountryChart({ type = "line", dataPoints = [], width = 520, height = 290, padding = 36 }) {
   const ref = useRef();
+  const tooltipRef = useRef(null);
   useEffect(() => {
     const svg = d3.select(ref.current);
     svg.selectAll("*").remove();
@@ -795,8 +796,42 @@ function CountryChart({ type = "line", dataPoints = [], width = 520, height = 29
       d3.select(path).attr("stroke-dasharray", `${total} ${total}`).attr("stroke-dashoffset", total).transition().duration(450).attr("stroke-dashoffset", 0);
     }
 
-    // small circles
-    svg.append("g").selectAll("circle").data(dataPoints).enter().append("circle").attr("cx", (d) => scaleX(d.year)).attr("cy", (d) => scaleY(d.value)).attr("r", 3).attr("fill", (d) => d3.interpolateGreens((d.value - yMin) / (yMax - yMin || 1)));
+    // small circles - all black
+    svg.append("g").selectAll("circle").data(dataPoints).enter().append("circle").attr("cx", (d) => scaleX(d.year)).attr("cy", (d) => scaleY(d.value)).attr("r", 3).attr("fill", "#000000");
+
+    // vertical line and hover interaction
+    const vline = svg.append("line").attr("stroke", "#333").attr("stroke-dasharray", "4 3").attr("stroke-width", 1.5).attr("y1", padding).attr("y2", height - padding).style("opacity", 0).attr("class", "vline");
+    const hoverGroup = svg.append("g").attr("class", "hover-group");
+    const tooltip = svg.append("text").attr("class", "hover-tooltip").attr("font-size", 12).attr("fill", "#000").attr("font-weight", "600").attr("text-anchor", "middle").style("opacity", 0).style("pointer-events", "none");
+
+    // overlay for hover
+    const overlay = svg.append("rect").attr("x", padding).attr("y", padding).attr("width", width - 2 * padding).attr("height", height - 2 * padding).attr("fill", "transparent").style("cursor", "crosshair");
+    overlay.on("mousemove", function (event) {
+      const [mx, my] = d3.pointer(event, this);
+      const year = Math.round(x.invert(mx));
+      if (year < xMin || year > xMax) {
+        vline.style("opacity", 0);
+        hoverGroup.selectAll("*").remove();
+        tooltip.style("opacity", 0);
+        return;
+      }
+      const xx = x(year);
+      vline.attr("x1", xx).attr("x2", xx).style("opacity", 0.8);
+      
+      const point = dataPoints.find((d) => d.year === year && d.value != null);
+      hoverGroup.selectAll("*").remove();
+      if (point) {
+        const yy = y(point.value);
+        hoverGroup.append("circle").attr("cx", xx).attr("cy", yy).attr("r", 5).attr("fill", "#000").attr("stroke", "#fff").attr("stroke-width", 2);
+        tooltip.attr("x", xx).attr("y", padding - 8).text(`${point.year}: ${point.value.toFixed(2)}`).style("opacity", 1);
+      } else {
+        tooltip.style("opacity", 0);
+      }
+    }).on("mouseleave", () => {
+      vline.style("opacity", 0);
+      hoverGroup.selectAll("*").remove();
+      tooltip.style("opacity", 0);
+    });
   }, [type, JSON.stringify(dataPoints)]);
 
   return <svg ref={ref} width={width} height={height} className="w-full h-full" />;

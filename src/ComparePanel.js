@@ -151,40 +151,49 @@ export default function ComparePanel({ open, onClose, lifeSeriesByName, YEARS })
     // set path d and color
     svg.selectAll(".line").data(dataPerCountry, (d) => d.key).attr("d", (d) => lineGen(d.values)).attr("stroke", (d, i) => color(i));
 
-    // circles for every defined data point (small, subtle)
+    // circles for every defined data point - all black
     dataPerCountry.forEach((c, ci) => {
       const g = svg.append("g").attr("class", `dots-${ci}`);
       g.selectAll("circle").data(c.values.filter((v) => v.value != null)).enter().append("circle")
         .attr("cx", (d) => x(d.year))
         .attr("cy", (d) => y(d.value))
         .attr("r", 2.5)
-        .attr("fill", color(ci))
-        .attr("opacity", 0.6)
+        .attr("fill", "#000000")
+        .attr("opacity", 0.7)
         .attr("data-key", c.key);
     });
 
     // overlay for hover to show vertical year line and highlight points
-    const overlay = svg.append("rect").attr("x", 50).attr("y", 20).attr("width", width - 70).attr("height", height - 60).attr("fill", "transparent");
-    const vline = svg.append("line").attr("stroke", "#555").attr("stroke-dasharray", "4 3").attr("y1", 20).attr("y2", height - 40).style("opacity", 0);
+    const overlay = svg.append("rect").attr("x", 50).attr("y", 20).attr("width", width - 70).attr("height", height - 60).attr("fill", "transparent").style("cursor", "crosshair");
+    const vline = svg.append("line").attr("stroke", "#333").attr("stroke-dasharray", "4 3").attr("stroke-width", 1.5).attr("y1", 20).attr("y2", height - 40).style("opacity", 0);
     const hoverGroup = svg.append("g").attr("class", "hover-group");
+    const tooltip = svg.append("text").attr("class", "hover-tooltip").attr("font-size", 12).attr("fill", "#000").attr("font-weight", "600").attr("text-anchor", "middle").style("opacity", 0).style("pointer-events", "none");
 
     overlay.on("mousemove", function (event) {
-      const [mx] = d3.pointer(event, this);
-      const year = Math.round(x.invert(mx + 50));
+      const [mx] = d3.pointer(event, svg.node());
+      const year = Math.round(x.invert(mx));
       if (year < yearRange[0] || year > yearRange[1]) return;
       const xx = x(year);
-      vline.attr("x1", xx).attr("x2", xx).style("opacity", 1);
+      vline.attr("x1", xx).attr("x2", xx).style("opacity", 0.8);
       // highlight dots at this year
       hoverGroup.selectAll("circle").remove();
+      const tooltipTexts = [];
       dataPerCountry.forEach((c, ci) => {
         const pt = c.values.find((v) => v.year === year && v.value != null);
         if (pt) {
-          hoverGroup.append("circle").attr("cx", x(pt.year)).attr("cy", y(pt.value)).attr("r", 5).attr("fill", color(ci)).attr("stroke", "#fff").attr("stroke-width", 1.2);
+          hoverGroup.append("circle").attr("cx", x(pt.year)).attr("cy", y(pt.value)).attr("r", 5).attr("fill", "#000").attr("stroke", "#fff").attr("stroke-width", 2);
+          tooltipTexts.push(`${displayNameFromKey(c.key)}: ${pt.value.toFixed(2)}`);
         }
       });
+      if (tooltipTexts.length > 0) {
+        tooltip.attr("x", xx).attr("y", 10).text(`${year}: ` + tooltipTexts.join(" | ")).style("opacity", 1);
+      } else {
+        tooltip.style("opacity", 0);
+      }
     }).on("mouseleave", () => {
       vline.style("opacity", 0);
       hoverGroup.selectAll("*").remove();
+      tooltip.style("opacity", 0);
     });
 
     // Debounce the heavy drawing/animation to avoid re-renders while slider is moving
@@ -350,8 +359,8 @@ export default function ComparePanel({ open, onClose, lifeSeriesByName, YEARS })
 
         <Box sx={{ display: "flex", gap: 4, alignItems: "center" }}>
           <Box sx={{ width: 420 }}>
-            <Typography variant="caption">Year range</Typography>
-            <Slider min={YEARS[0]} max={YEARS[YEARS.length - 1]} value={yearRange} onChange={(e, v) => setYearRange(v)} valueLabelDisplay="auto"/>
+          <Typography variant="caption">Year range: {yearRange[0]} - {yearRange[1]}</Typography>
+          <Slider min={YEARS[0]} max={YEARS[YEARS.length - 1]} value={yearRange} onChange={(e, v) => setYearRange(v)} valueLabelDisplay="on"/>
           </Box>
           <Box sx={{ flex: 1 }}>
             {chartType === "line" && (
