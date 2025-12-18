@@ -9,10 +9,11 @@ import { geoMercator } from "d3-geo";
 import { scaleSequential, scaleDiverging } from "d3-scale";
 import { interpolateGreens, interpolateRdYlGn } from "d3-scale-chromatic";
 import { Button, MenuItem, Select } from "@mui/material";
-import { ZoomIn, ZoomOut, RestartAlt } from "@mui/icons-material";
+import { ZoomIn, ZoomOut, RestartAlt, Settings as SettingsIcon } from "@mui/icons-material";
 import "./App.css";
 import * as topojson from "topojson-client";
 import Papa from "papaparse";
+import AdminPanel from "./AdminPanel";
 
 const PUBLIC_URL = process.env.PUBLIC_URL || "";
 const GEO_URL = `${PUBLIC_URL}/countries-110m.json`;
@@ -105,6 +106,7 @@ export default function App() {
   const [chartType, setChartType] = useState("line");
   const [chartRange, setChartRange] = useState("after2000"); // all, before2000, after2000
   const [colorStats, setColorStats] = useState({ min: 30, mean: 50, max: 80 });
+  const [adminPanelOpen, setAdminPanelOpen] = useState(false);
   const mapRef = useRef(null);
 
   // Load topojson + real life expectancy data
@@ -192,13 +194,19 @@ export default function App() {
           setIndicatorDescription(indicatorRow["INDICATOR_NAME"] || "");
         }
 
-        setLifeSeriesByName(lifeSeries);
+        // Check for localStorage edits
+        const savedEdits = localStorage.getItem("lifeExpectancyEdits");
+        const finalLifeSeries = savedEdits
+          ? JSON.parse(savedEdits)
+          : lifeSeries;
+
+        setLifeSeriesByName(finalLifeSeries);
 
         setLifeByYearForMap((prev) => {
           const byYear = { ...prev };
           COLOR_YEARS.forEach((year) => {
             const lifeForYear = {};
-            Object.entries(lifeSeries).forEach(([normName, series]) => {
+            Object.entries(finalLifeSeries).forEach(([normName, series]) => {
               if (series[year] !== undefined) {
                 lifeForYear[normName] = series[year];
               }
@@ -297,6 +305,23 @@ export default function App() {
   const handleReset = () => {
     setZoom(1);
     setCenter([0, 0]);
+  };
+
+  const handleDataUpdate = (updatedData) => {
+    setLifeSeriesByName(updatedData);
+    setLifeByYearForMap((prev) => {
+      const byYear = { ...prev };
+      COLOR_YEARS.forEach((year) => {
+        const lifeForYear = {};
+        Object.entries(updatedData).forEach(([normName, series]) => {
+          if (series[year] !== undefined) {
+            lifeForYear[normName] = series[year];
+          }
+        });
+        byYear[year] = lifeForYear;
+      });
+      return byYear;
+    });
   };
 
   const popOutProjection = useMemo(() => {
@@ -569,6 +594,15 @@ export default function App() {
           </span>
         </h1>
         <div className="flex items-center gap-3 absolute right-4">
+          <Button
+            variant="outlined"
+            size="small"
+            onClick={() => setAdminPanelOpen(true)}
+            startIcon={<SettingsIcon />}
+            sx={{ color: "#666", borderColor: "#ddd" }}
+          >
+            Admin
+          </Button>
           <div className="text-sm text-gray-600 mr-1">Year</div>
           <Select
             size="small"
@@ -846,6 +880,14 @@ export default function App() {
           </div>
         )}
       </main>
+
+      <AdminPanel
+        isOpen={adminPanelOpen}
+        onClose={() => setAdminPanelOpen(false)}
+        lifeSeriesByName={lifeSeriesByName}
+        onDataUpdate={handleDataUpdate}
+        YEARS={YEARS}
+      />
     </div>
   );
 }
