@@ -9,6 +9,11 @@ const PORT = 5000;
 app.use(cors());
 app.use(express.json({ limit: "50mb" }));
 
+// Health check
+app.get('/health', (req, res) => {
+  res.json({ ok: true, time: new Date().toISOString() });
+});
+
 // API endpoint to save CSV data
 app.post("/api/save-dataset", (req, res) => {
   try {
