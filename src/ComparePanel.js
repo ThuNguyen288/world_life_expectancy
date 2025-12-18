@@ -50,6 +50,10 @@ export default function ComparePanel({ open, onClose, lifeSeriesByName, YEARS })
   const [chartType, setChartType] = useState("line");
   const [yearRange, setYearRange] = useState([YEARS[0], YEARS[YEARS.length - 1]]);
   const svgRef = useRef();
+  const animTimersRef = useRef([]);
+  const animatedRef = useRef(new Set());
+  const barSvgRef = useRef();
+  const boxSvgRef = useRef();
   const color = d3.scaleOrdinal(d3.schemeCategory10);
 
   useEffect(() => {
@@ -80,15 +84,31 @@ export default function ComparePanel({ open, onClose, lifeSeriesByName, YEARS })
 
   const yearsInRange = useMemo(() => YEARS.filter((y) => y >= yearRange[0] && y <= yearRange[1]), [YEARS, yearRange]);
 
+  // Bar chart and boxplot data (declare early so effects that depend on it can reference)
+  const barData = useMemo(() => {
+    return selected.map((k) => {
+      const vals = yearsInRange.map((y) => lifeSeriesByName[k]?.[y]).filter((v) => v != null);
+      return { key: k, mean: vals.length ? d3.mean(vals) : null, values: vals };
+    });
+  }, [selected, yearsInRange, lifeSeriesByName]);
+
   // draw charts (line) with d3 transitions for smooth updates
   useEffect(() => {
     const svg = d3.select(svgRef.current);
     svg.selectAll("*").remove();
+    // clear previous timers
+    (animTimersRef.current || []).forEach((t) => clearTimeout(t));
+    animTimersRef.current = [];
+
     const width = 800;
     const height = 340;
     svg.attr("viewBox", `0 0 ${width} ${height}`).style("width", "100%");
 
-    if (selected.length === 0) return;
+    if (selected.length === 0) {
+      // reset animated set when nothing selected
+      animatedRef.current.clear();
+      return;
+    }
 
     const dataPerCountry = selected.map((k) => ({ key: k, values: yearsInRange.map((y) => ({ year: y, value: lifeSeriesByName[k]?.[y] ?? null })) }));
 
@@ -106,26 +126,30 @@ export default function ComparePanel({ open, onClose, lifeSeriesByName, YEARS })
 
     const lineGen = d3.line().defined((d) => d.value != null).x((d) => x(d.year)).y((d) => y(d.value)).curve(d3.curveMonotoneX);
 
+    // helper: approximate path length at closest point to given (tx,ty)
+    function getLengthAtPointApprox(pathNode, tx, ty) {
+      const total = pathNode.getTotalLength();
+      const samples = 240;
+      let best = { len: 0, dist: Infinity };
+      for (let i = 0; i <= samples; i++) {
+        const l = (i / samples) * total;
+        const p = pathNode.getPointAtLength(l);
+        const dx = p.x - tx;
+        const dy = p.y - ty;
+        const d = dx * dx + dy * dy;
+        if (d < best.dist) {
+          best = { len: l, dist: d };
+        }
+      }
+      return best.len;
+    }
+
     const countries = svg.selectAll(".country").data(dataPerCountry, (d) => d.key);
-
     const enter = countries.enter().append("g").attr("class", "country");
+    enter.append("path").attr("class", "line").attr("fill", "none").attr("stroke-width", 2).attr("stroke-linejoin", "round").attr("stroke-linecap", "round");
 
-    enter.append("path").attr("class", "line").attr("fill", "none").attr("stroke-width", 2).attr("stroke", (d, i) => color(i)).attr("stroke-linejoin", "round").attr("stroke-linecap", "round");
-
-    // bind and draw with a drawing animation
-    const lines = svg.selectAll(".line").data(dataPerCountry, (d) => d.key);
-    lines.join(
-      (enterSel) => enterSel
-        .attr("stroke", (d, i) => color(i))
-        .attr("d", (d) => lineGen(d.values))
-        .each(function () {
-          const path = d3.select(this);
-          const total = this.getTotalLength ? this.getTotalLength() : 0;
-          path.attr("stroke-dasharray", total + " " + total).attr("stroke-dashoffset", total).transition().duration(900).attr("stroke-dashoffset", 0);
-        }),
-      (updateSel) => updateSel.transition().duration(700).attr("d", (d) => lineGen(d.values)).attr("stroke", (d, i) => color(i)),
-      (exitSel) => exitSel.transition().duration(400).style("opacity", 0).remove()
-    );
+    // set path d and color
+    svg.selectAll(".line").data(dataPerCountry, (d) => d.key).attr("d", (d) => lineGen(d.values)).attr("stroke", (d, i) => color(i));
 
     // circles for every defined data point (small, subtle)
     dataPerCountry.forEach((c, ci) => {
@@ -135,7 +159,7 @@ export default function ComparePanel({ open, onClose, lifeSeriesByName, YEARS })
         .attr("cy", (d) => y(d.value))
         .attr("r", 2.5)
         .attr("fill", color(ci))
-        .attr("opacity", 0.7)
+        .attr("opacity", 0.6)
         .attr("data-key", c.key);
     });
 
@@ -163,6 +187,56 @@ export default function ComparePanel({ open, onClose, lifeSeriesByName, YEARS })
       hoverGroup.selectAll("*").remove();
     });
 
+    // Debounce the heavy drawing/animation to avoid re-renders while slider is moving
+    const drawTimer = setTimeout(() => {
+      const totalDuration = 450;
+
+      svg.selectAll('.line').each(function(d, di) {
+        const pathNode = this;
+        const total = pathNode.getTotalLength ? pathNode.getTotalLength() : 0;
+        const definedPoints = d.values.filter((v) => v.value != null);
+        if (definedPoints.length === 0) return;
+
+        const key = d.key;
+        if (animatedRef.current.has(key)) {
+          d3.select(pathNode).attr('stroke-dasharray', `${total} ${total}`).attr('d', lineGen(d.values));
+          d3.select(pathNode.parentNode).selectAll('.persist-last').remove();
+          const lastPt = definedPoints[definedPoints.length - 1];
+          if (lastPt) {
+            d3.select(pathNode.parentNode).append('circle').attr('class', 'persist-last').attr('cx', x(lastPt.year)).attr('cy', y(lastPt.value)).attr('r', 4).attr('fill', color(di)).attr('opacity', 0.95);
+          }
+          return;
+        }
+
+        animatedRef.current.add(key);
+
+        d3.select(pathNode).attr('stroke-dasharray', `0 ${total}`);
+        const head = d3.select(pathNode.parentNode).append('circle').attr('class', 'head-anim').attr('r', 5).attr('fill', color(di)).attr('stroke', '#fff').attr('stroke-width', 1).style('opacity', 0);
+
+        // small stagger to reduce simultaneous load
+        const stagger = di * 40;
+
+        d3.select(pathNode).transition().delay(stagger).duration(totalDuration).tween('progress', function() {
+          return function(t) {
+            const len = t * total;
+            d3.select(pathNode).attr('stroke-dasharray', `${len} ${total}`);
+            const p = pathNode.getPointAtLength(len);
+            head.attr('cx', p.x).attr('cy', p.y).style('opacity', 1);
+          };
+        }).on('end', function() {
+          d3.select(pathNode).attr('stroke-dasharray', `${total} ${total}`);
+          head.remove();
+          d3.select(pathNode.parentNode).selectAll('.persist-last').remove();
+          const lastPt = definedPoints[definedPoints.length - 1];
+          if (lastPt) {
+            d3.select(pathNode.parentNode).append('circle').attr('class', 'persist-last').attr('cx', x(lastPt.year)).attr('cy', y(lastPt.value)).attr('r', 4).attr('fill', color(di)).attr('opacity', 0.95);
+          }
+        });
+      });
+    }, 80);
+
+    animTimersRef.current.push(drawTimer);
+
     // legend
     const legend = svg.append("g").attr("transform", `translate(${width - 220},20)`);
     dataPerCountry.forEach((c, i) => {
@@ -171,15 +245,66 @@ export default function ComparePanel({ open, onClose, lifeSeriesByName, YEARS })
       g.append("text").attr("x", 20).attr("y", 10).text(displayNameFromKey(c.key)).attr("font-size", 12);
     });
 
+    return () => {
+      // clear any pending draw timers
+      (animTimersRef.current || []).forEach((t) => {
+        try { clearTimeout(t); } catch (e) {}
+      });
+      // interrupt ongoing d3 transitions and remove temporary nodes
+      try {
+        svg.selectAll('.line').interrupt();
+        svg.selectAll('.head-anim').remove();
+        svg.selectAll('.persist-last').remove();
+      } catch (e) {}
+      animTimersRef.current = [];
+    };
   }, [selected, yearRange, lifeSeriesByName]);
 
-  // Bar chart and boxplot data
-  const barData = useMemo(() => {
-    return selected.map((k) => {
-      const vals = yearsInRange.map((y) => lifeSeriesByName[k]?.[y]).filter((v) => v != null);
-      return { key: k, mean: vals.length ? d3.mean(vals) : null, values: vals };
+  // animate bar chart rising effect when chartType === 'bar'
+  useEffect(() => {
+    if (chartType !== "bar" || !barSvgRef.current) return;
+    const svg = d3.select(barSvgRef.current);
+    // compute same scales as render
+    const w = 760; const h = 300; const left = 40; const top = 20;
+    const means = barData.map((d) => d.mean ?? 0);
+    const yMin = d3.min(means) - 1;
+    const yMax = d3.max(means) + 1;
+    const x = d3.scaleBand().domain(barData.map(d=>d.key)).range([left, left + w]).padding(0.2);
+    const y = d3.scaleLinear().domain([yMin, yMax]).range([top + h, top]);
+
+    svg.selectAll('.bar-rect').each(function(d,i){
+      const node = d3.select(this);
+      const key = node.attr('data-key');
+      const datum = barData.find(b=>b.key===key);
+      if (!datum) return;
+      const bx = x(datum.key); const bw = x.bandwidth(); const by = y(datum.mean ?? 0); const bh = top + h - by;
+      // start collapsed
+      node.attr('y', top + h).attr('height', 0);
+      node.transition().duration(600).attr('y', by).attr('height', bh);
     });
-  }, [selected, yearsInRange, lifeSeriesByName]);
+  }, [chartType, barData]);
+
+  // animate box rects growth when chartType === 'box'
+  useEffect(() => {
+    if (chartType !== "box" || !boxSvgRef.current) return;
+    const svg = d3.select(boxSvgRef.current);
+    const allVals = barData.flatMap((d) => d.values);
+    if (!allVals.length) return;
+    const vMin = d3.min(allVals); const vMax = d3.max(allVals);
+    const scaleY = d3.scaleLinear().domain([vMin, vMax]).range([280, 40]);
+
+    svg.selectAll('.box-rect').each(function(){
+      const node = d3.select(this);
+      const xAttr = +node.attr('x');
+      const width = +node.attr('width');
+      const finalY = +node.attr('y');
+      const finalH = +node.attr('height');
+      node.attr('y', finalY + finalH).attr('height', 0);
+      node.transition().duration(650).attr('y', finalY).attr('height', finalH);
+    });
+  }, [chartType, barData]);
+
+  
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
@@ -234,7 +359,7 @@ export default function ComparePanel({ open, onClose, lifeSeriesByName, YEARS })
             )}
             {chartType === "bar" && (
               <Box>
-                <svg viewBox="0 0 800 340" style={{ width: "100%", height: 360, border: "1px solid #eee", borderRadius: 8 }}>
+                <svg ref={barSvgRef} viewBox="0 0 800 340" style={{ width: "100%", height: 360, border: "1px solid #eee", borderRadius: 8 }}>
                   {/* simple bars with y-axis ticks */}
                   {barData.length > 0 && (() => {
                     const w = 760; const h = 300; const left = 40; const top = 20;
@@ -258,7 +383,7 @@ export default function ComparePanel({ open, onClose, lifeSeriesByName, YEARS })
                         {/* bars */}
                         {barData.map((d,i)=>{
                           const bx = x(d.key); const bw = x.bandwidth(); const by = y(d.mean ?? 0); const bh = top + h - by;
-                          return <rect key={d.key} x={bx} y={by} width={bw} height={bh} fill={d3.schemeCategory10[i % 10]} />
+                          return <rect className="bar-rect" key={d.key} data-key={d.key} x={bx} y={by} width={bw} height={bh} fill={d3.schemeCategory10[i % 10]} />
                         })}
                         {/* x labels */}
                         {barData.map((d,i)=>{
@@ -273,7 +398,7 @@ export default function ComparePanel({ open, onClose, lifeSeriesByName, YEARS })
             )}
             {chartType === "box" && (
               <Box>
-                <svg viewBox="0 0 900 360" style={{ width: "100%", height: 360, border: "1px solid #eee", borderRadius: 8 }}>
+                <svg ref={boxSvgRef} viewBox="0 0 900 360" style={{ width: "100%", height: 360, border: "1px solid #eee", borderRadius: 8 }}>
                   {(() => {
                     const allVals = barData.flatMap((d) => d.values);
                     if (!allVals.length) return null;
@@ -298,7 +423,7 @@ export default function ComparePanel({ open, onClose, lifeSeriesByName, YEARS })
                           return (
                             <g key={d.key}>
                               <line x1={left+40} x2={left+40} y1={scaleY(d3.min(vals))} y2={scaleY(d3.max(vals))} stroke="#333" />
-                              <rect x={left+10} y={scaleY(q3)} width={60} height={Math.max(2, scaleY(q1)-scaleY(q3))} fill={d3.schemeCategory10[i%10]} opacity={0.6} />
+                              <rect className="box-rect" data-key={d.key} x={left+10} y={scaleY(q3)} width={60} height={Math.max(2, scaleY(q1)-scaleY(q3))} fill={d3.schemeCategory10[i%10]} opacity={0.6} />
                               <line x1={left+10} x2={left+70} y1={scaleY(median)} y2={scaleY(median)} stroke="#111" strokeWidth={2} />
                               <text x={left+40} y={300} textAnchor="middle" fontSize={12}>{displayNameFromKey(d.key)}</text>
                             </g>

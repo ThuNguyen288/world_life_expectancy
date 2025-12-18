@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import * as d3 from "d3";
 import {
   ComposableMap,
   Geographies,
@@ -105,6 +106,8 @@ const NAME_ALIASES = {
 };
 
 export default function App() {
+  // hovered country for map mouseover border effect
+  const [hoveredCountry, setHoveredCountry] = useState(null);
   const [tooltip, setTooltip] = useState(null);
   const [selectedCountry, setSelectedCountry] = useState(null);
   const [lifeSeriesByName, setLifeSeriesByName] = useState({});
@@ -387,209 +390,27 @@ export default function App() {
     const yStep = (yMax - yMin) / yTicks || 1;
 
     if (chartType === "bar") {
-      const barWidth = (width - 2 * padding) / dataPoints.length;
       return (
-        <svg width={width} height={height} className="w-full h-full">
-          <line
-            x1={padding}
-            y1={height - padding}
-            x2={width - padding}
-            y2={height - padding}
-            stroke="#e5e7eb"
-            strokeWidth={1}
-          />
-          <line
-            x1={padding}
-            y1={padding}
-            x2={padding}
-            y2={height - padding}
-            stroke="#e5e7eb"
-            strokeWidth={1}
-          />
-          {Array.from({ length: yTicks + 1 }, (_, i) => {
-            const v = yMin + i * yStep;
-            const y = scaleY(v);
-            return (
-              <g key={i}>
-                <line
-                  x1={padding}
-                  y1={y}
-                  x2={width - padding}
-                  y2={y}
-                  stroke="#f3f4f6"
-                  strokeWidth={1}
-                />
-                <text
-                  x={padding - 6}
-                  y={y + 3}
-                  textAnchor="end"
-                  fontSize={11}
-                  fill="#111827"
-                >
-                  {v.toFixed(0)}
-                </text>
-              </g>
-            );
-          })}
-          {dataPoints.map((d, i) => {
-            const x = padding + i * barWidth + barWidth * 0.1;
-            const y = scaleY(d.value);
-            const h = height - padding - y;
-            return (
-              <rect
-                key={d.year}
-                x={x}
-                y={y}
-                width={barWidth * 0.8}
-                height={h}
-                fill={chartColorScale(d.value)}
-              >
-                <title>
-                  {`Year ${d.year}: ${d.value.toFixed(2)} years`}
-                </title>
-              </rect>
-            );
-          })}
-          {dataPoints.map((d, i) => {
-            if (i % xTickStep !== 0 && i !== dataPoints.length - 1) return null;
-            const x = scaleX(d.year);
-            return (
-              <text
-                key={d.year}
-                x={x}
-                y={height - padding + 16}
-                textAnchor="middle"
-                fontSize={11}
-                fill="#111827"
-              >
-                {d.year}
-              </text>
-            );
-          })}
-          <text
-            x={width / 2}
-            y={height - 6}
-            textAnchor="middle"
-            fontSize={12}
-            fill="#111827"
-          >
-            Year
-          </text>
-          <text
-            x={12}
-            y={height / 2}
-            textAnchor="middle"
-            fontSize={12}
-            fill="#111827"
-            transform={`rotate(-90 12 ${height / 2})`}
-          >
-            Life expectancy (years)
-          </text>
-        </svg>
+        <CountryChart
+          key={`bar-${selectedCountry}-${chartRange}`}
+          type="bar"
+          dataPoints={dataPoints}
+          width={width}
+          height={height}
+          padding={padding}
+        />
       );
     }
 
-    const pathD = dataPoints
-      .map((d, i) => {
-        const x = scaleX(d.year);
-        const y = scaleY(d.value);
-        return `${i === 0 ? "M" : "L"}${x},${y}`;
-      })
-      .join(" ");
-
     return (
-      <svg width={width} height={height} className="w-full h-full">
-        <line
-          x1={padding}
-          y1={height - padding}
-          x2={width - padding}
-          y2={height - padding}
-          stroke="#e5e7eb"
-          strokeWidth={1}
-        />
-        <line
-          x1={padding}
-          y1={padding}
-          x2={padding}
-          y2={height - padding}
-          stroke="#e5e7eb"
-          strokeWidth={1}
-        />
-        {Array.from({ length: yTicks + 1 }, (_, i) => {
-          const v = yMin + i * yStep;
-          const y = scaleY(v);
-          return (
-            <g key={i}>
-              <line
-                x1={padding}
-                y1={y}
-                x2={width - padding}
-                y2={y}
-                stroke="#f3f4f6"
-                strokeWidth={1}
-              />
-              <text
-                x={padding - 6}
-                y={y + 3}
-                textAnchor="end"
-                fontSize={11}
-                fill="#111827"
-              >
-                {v.toFixed(0)}
-              </text>
-            </g>
-          );
-        })}
-        <path d={pathD} fill="none" stroke="#16a34a" strokeWidth={2} />
-        {dataPoints.map((d, i) => (
-          <circle
-            key={d.year}
-            cx={scaleX(d.year)}
-            cy={scaleY(d.value)}
-            r={i === dataPoints.length - 1 ? 4 : 3}
-            fill={chartColorScale(d.value)}
-          >
-            <title>
-              {`Year ${d.year}: ${d.value.toFixed(2)} years`}
-            </title>
-          </circle>
-        ))}
-        {dataPoints.map((d, i) => {
-          if (i % xTickStep !== 0 && i !== dataPoints.length - 1) return null;
-          const x = scaleX(d.year);
-          return (
-            <text
-              key={d.year}
-              x={x}
-              y={height - padding + 16}
-              textAnchor="middle"
-              fontSize={11}
-              fill="#111827"
-            >
-              {d.year}
-            </text>
-          );
-        })}
-        <text
-          x={width / 2}
-          y={height - 6}
-          textAnchor="middle"
-          fontSize={12}
-          fill="#111827"
-        >
-          Year
-        </text>
-        <text
-          x={12}
-          y={height / 2}
-          textAnchor="middle"
-          fontSize={12}
-          fill="#111827"
-          transform={`rotate(-90 12 ${height / 2})`}
-        >
-          Life expectancy (years)
-        </text>
-      </svg>
+      <CountryChart
+        key={`line-${selectedCountry}-${chartRange}`}
+        type="line"
+        dataPoints={dataPoints}
+        width={width}
+        height={height}
+        padding={padding}
+      />
     );
   };
 
@@ -673,38 +494,44 @@ export default function App() {
                         key={geo.rsmKey}
                         geography={geo}
                         fill={life !== undefined ? colorScale(life) : "#dcdcdc"}
-                        stroke={
-                          selectedCountry === geo.properties.name
-                            ? "transparent"
-                            : "#666"
-                        }
-                        strokeWidth={
-                          selectedCountry === geo.properties.name ? 0 : 0.4
-                        }
-                        onMouseEnter={(e) => {
-                          if (!mapRef.current) return;
-                          const rect = mapRef.current.getBoundingClientRect();
-                          setTooltip({
-                            name: geo.properties.name,
-                            life,
-                            x: e.clientX - rect.left,
-                            y: e.clientY - rect.top,
-                          });
-                        }}
-                        onMouseMove={(e) => {
-                          if (!mapRef.current) return;
-                          const rect = mapRef.current.getBoundingClientRect();
-                          setTooltip((prev) =>
-                            prev
-                              ? {
-                                ...prev,
+                            stroke={
+                              selectedCountry === geo.properties.name
+                                ? "transparent"
+                                : hoveredCountry === geo.properties.name
+                                ? "#000"
+                                : "#666"
+                            }
+                            strokeWidth={
+                              selectedCountry === geo.properties.name ? 0 : hoveredCountry === geo.properties.name ? 1.2 : 0.4
+                            }
+                            onMouseEnter={(e) => {
+                              if (!mapRef.current) return;
+                              const rect = mapRef.current.getBoundingClientRect();
+                              setHoveredCountry(geo.properties.name);
+                              setTooltip({
+                                name: geo.properties.name,
+                                life,
                                 x: e.clientX - rect.left,
                                 y: e.clientY - rect.top,
-                              }
-                              : null
-                          );
-                        }}
-                        onMouseLeave={() => setTooltip(null)}
+                              });
+                            }}
+                            onMouseMove={(e) => {
+                              if (!mapRef.current) return;
+                              const rect = mapRef.current.getBoundingClientRect();
+                              setTooltip((prev) =>
+                                prev
+                                  ? {
+                                    ...prev,
+                                    x: e.clientX - rect.left,
+                                    y: e.clientY - rect.top,
+                                  }
+                                  : null
+                              );
+                            }}
+                            onMouseLeave={() => {
+                              setHoveredCountry(null);
+                              setTooltip(null);
+                            }}
                         onClick={() => setSelectedCountry(geo.properties.name)}
                         className="cursor-pointer hover:opacity-90 transition no-outline"
                         style={{ outline: "none" }}
@@ -916,4 +743,61 @@ export default function App() {
       />
     </div>
   );
+}
+
+// Small reusable animated country chart used for single-country popout
+function CountryChart({ type = "line", dataPoints = [], width = 520, height = 290, padding = 36 }) {
+  const ref = useRef();
+  useEffect(() => {
+    const svg = d3.select(ref.current);
+    svg.selectAll("*").remove();
+    if (!dataPoints || dataPoints.length === 0) return;
+
+    const xMin = dataPoints[0].year;
+    const xMax = dataPoints[dataPoints.length - 1].year;
+    let yMin = Math.min(...dataPoints.map((d) => d.value));
+    let yMax = Math.max(...dataPoints.map((d) => d.value));
+    if (yMin === yMax) {
+      yMin = Math.max(0, yMin - 5);
+      yMax = yMax + 5;
+    }
+
+    const scaleX = (year) => padding + ((year - xMin) / (xMax - xMin || 1)) * (width - 2 * padding);
+    const scaleY = (value) => height - padding - ((value - yMin) / (yMax - yMin || 1)) * (height - 2 * padding);
+
+    const x = d3.scaleLinear().domain([xMin, xMax]).range([padding, width - padding]);
+    const y = d3.scaleLinear().domain([yMin, yMax]).range([height - padding, padding]);
+
+    const xAxis = d3.axisBottom(x).ticks(Math.min(8, dataPoints.length)).tickFormat(d3.format("d"));
+    const yAxis = d3.axisLeft(y).ticks(5);
+    svg.append("g").attr("transform", `translate(0,${height - padding})`).call(xAxis);
+    svg.append("g").attr("transform", `translate(${padding},0)`).call(yAxis);
+
+    if (type === "bar") {
+      const chartColorScale = d3.scaleSequential().domain([yMin, yMax]).interpolator(d3.interpolateGreens);
+      const barWidth = (width - 2 * padding) / dataPoints.length;
+      const g = svg.append("g");
+      dataPoints.forEach((d, i) => {
+        const bx = padding + i * barWidth + barWidth * 0.1;
+        const by = scaleY(d.value);
+        const bh = height - padding - by;
+        const rect = g.append("rect").attr("x", bx).attr("y", height - padding).attr("width", barWidth * 0.8).attr("height", 0).attr("fill", chartColorScale(d.value));
+        rect.transition().duration(600).attr("y", by).attr("height", bh);
+      });
+      return;
+    }
+
+    // line chart
+    const lineGen = d3.line().defined((d) => d.value != null).x((d) => scaleX(d.year)).y((d) => scaleY(d.value)).curve(d3.curveMonotoneX);
+    const path = svg.append("path").datum(dataPoints).attr("d", lineGen).attr("fill", "none").attr("stroke", "#16a34a").attr("stroke-width", 2).node();
+    if (path) {
+      const total = path.getTotalLength();
+      d3.select(path).attr("stroke-dasharray", `${total} ${total}`).attr("stroke-dashoffset", total).transition().duration(450).attr("stroke-dashoffset", 0);
+    }
+
+    // small circles
+    svg.append("g").selectAll("circle").data(dataPoints).enter().append("circle").attr("cx", (d) => scaleX(d.year)).attr("cy", (d) => scaleY(d.value)).attr("r", 3).attr("fill", (d) => d3.interpolateGreens((d.value - yMin) / (yMax - yMin || 1)));
+  }, [type, JSON.stringify(dataPoints)]);
+
+  return <svg ref={ref} width={width} height={height} className="w-full h-full" />;
 }
