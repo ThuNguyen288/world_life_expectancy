@@ -39,6 +39,17 @@ function normalizeName(name) {
 
 // Map một số tên nước đặc biệt trong topojson sang tên trong CSV
 const NAME_ALIASES = {
+  //topo: "W. Sahara" → csv: "Morocco"
+  [normalizeName("W. Sahara")]: normalizeName("morocco"),
+  //topo: "Taiwan" → csv: " China"
+  [normalizeName("Taiwan")]: normalizeName("china"),
+  // topo: "Faklkand Islands" → csv: "argentina"
+  [normalizeName("Falkland Is")]: normalizeName("argentina)"),
+  // topo "Puerto Rico" → csv: "puertoricous"
+  [normalizeName("Puerto Rico")]: normalizeName("puertoricous"),
+  // topo: "Somaliland" and "Somalia" → csv: "Somalia, Fed. Rep."
+  [normalizeName("Somaliland")]: normalizeName("somaliafedrep"),
+  [normalizeName("Somalia")]: normalizeName("somaliafedrep"),
   // topo: "United States of America" → csv: "United States"
   [normalizeName("United States of America")]: normalizeName("United States"),
   // topo: "Russia" → csv: "Russian Federation"
@@ -89,8 +100,7 @@ const NAME_ALIASES = {
   [normalizeName("Egypt")]: normalizeName("Egypt, Arab Rep."),
   // topo: "Venezuela" → csv: "Venezuela, RB"
   [normalizeName("Venezuela")]: normalizeName("Venezuela, RB"),
-  // topo: "Puerto Rico" → csv: "Puerto Rico" (territory)
-  [normalizeName("Puerto Rico")]: normalizeName("Puerto Rico"),
+  
 };
 
 export default function App() {
