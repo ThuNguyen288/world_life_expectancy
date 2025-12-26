@@ -1,13 +1,13 @@
 {
   "files": {
-    "main.css": "/world_life_expectancy/static/css/main.68675d64.css",
-    "main.js": "/world_life_expectancy/static/js/main.10e3ae9e.js",
+    "main.css": "/world_life_expectancy/static/css/main.5947db77.css",
+    "main.js": "/world_life_expectancy/static/js/main.abb68a66.js",
     "index.html": "/world_life_expectancy/index.html",
-    "main.68675d64.css.map": "/world_life_expectancy/static/css/main.68675d64.css.map",
-    "main.10e3ae9e.js.map": "/world_life_expectancy/static/js/main.10e3ae9e.js.map"
+    "main.5947db77.css.map": "/world_life_expectancy/static/css/main.5947db77.css.map",
+    "main.abb68a66.js.map": "/world_life_expectancy/static/js/main.abb68a66.js.map"
   },
   "entrypoints": [
-    "static/css/main.68675d64.css",
-    "static/js/main.10e3ae9e.js"
+    "static/css/main.5947db77.css",
+    "static/js/main.abb68a66.js"
   ]
 }
